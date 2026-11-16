@@ -28,7 +28,7 @@ jobs:
         id: wx-cache
         with:
           path: wxsdk
-          key: wx-3.1.4-msvc2022-static-r1
+          key: wx-3.1.4-msvc2022-static-sys-r2
       - name: Install libraries
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
@@ -41,14 +41,18 @@ jobs:
           Expand-Archive sfml.zip
           $prefix = "$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows-static"
           if ('${{ steps.wx-cache.outputs.cache-hit }}' -eq 'true') { exit 0 }
-          cmake -S wx -B wxbuild -A x64 -G 'Visual Studio 17 2022' "-DCMAKE_PREFIX_PATH=$prefix" "-DCMAKE_INSTALL_PREFIX=$PWD/wxsdk" -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DwxBUILD_SHARED=OFF -DwxBUILD_USE_STATIC_RUNTIME=ON -DwxUSE_LIBJPEG=sys -DwxUSE_LIBPNG=sys -DwxUSE_ZLIB=sys -DwxUSE_LIBTIFF=OFF -DwxUSE_EXPAT=OFF -DwxUSE_GIF=OFF -DwxUSE_LIBLZMA=OFF -DwxBUILD_SAMPLES=OFF -DwxBUILD_TESTS=OFF
+          $zlib = Get-ChildItem "$prefix/lib" -Filter '*.lib' | Where-Object { $_.BaseName -match '^z($|lib|s$)' } | Select-Object -First 1
+          $png = Get-ChildItem "$prefix/lib" -Filter '*png*.lib' | Select-Object -First 1
+          if (!$zlib -or !$png) { Get-ChildItem "$prefix/lib"; throw 'Image library lookup failed' }
+          $imageArgs = @("-DZLIB_LIBRARY=$($zlib.FullName)", "-DZLIB_LIBRARY_RELEASE=$($zlib.FullName)", "-DPNG_LIBRARY=$($png.FullName)", "-DPNG_LIBRARY_RELEASE=$($png.FullName)", "-DPNG_PNG_INCLUDE_DIR=$prefix/include")
+          cmake @imageArgs -S wx -B wxbuild -A x64 -G 'Visual Studio 17 2022' "-DCMAKE_PREFIX_PATH=$prefix" "-DCMAKE_INSTALL_PREFIX=$PWD/wxsdk" "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" -DwxBUILD_SHARED=OFF -DwxBUILD_USE_STATIC_RUNTIME=ON -DwxUSE_LIBJPEG=sys -DwxUSE_LIBPNG=sys -DwxUSE_ZLIB=sys -DwxUSE_LIBTIFF=OFF -DwxUSE_EXPAT=OFF -DwxUSE_GIF=OFF -DwxUSE_LIBLZMA=OFF -DwxBUILD_SAMPLES=OFF -DwxBUILD_TESTS=OFF
           cmake --build wxbuild --config Release --target INSTALL --parallel 3
       - name: Preserve the compiled SDK
         if: steps.wx-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: wxsdk
-          key: wx-3.1.4-msvc2022-static-r1
+          key: wx-3.1.4-msvc2022-static-sys-r2
       - name: Build game with the mod
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
@@ -60,7 +64,11 @@ jobs:
           $cm = [IO.File]::ReadAllText($file).Replace('COMPONENTS system audio REQUIRED','COMPONENTS system audio network REQUIRED').Replace(' /WX"', ' /WX-"')
           [IO.File]::WriteAllText($file,$cm)
           $prefix = "$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows-static"
-          cmake -S game -B build -A x64 -G 'Visual Studio 17 2022' -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DFS_BUILD_BENCHMARKS=OFF -DFS_USE_STATIC_LIBS=ON "-DCMAKE_PREFIX_PATH=$prefix" "-DGTEST_DIR=$PWD/gtest" "-DPICOJSON_DIR=$PWD/pico" "-DSFML_DIR=$sfml" "-DSFML_BIN_DIR=$sfml/../../../bin" "-DwxWidgets_ROOT_DIR=$PWD/wxsdk" "-DwxWidgets_LIB_DIR=$wxLib" -DwxWidgets_CONFIGURATION=mswu -DwxWidgets_USE_REL_AND_DBG=OFF
+          $zlib = Get-ChildItem "$prefix/lib" -Filter '*.lib' | Where-Object { $_.BaseName -match '^z($|lib|s$)' } | Select-Object -First 1
+          $png = Get-ChildItem "$prefix/lib" -Filter '*png*.lib' | Select-Object -First 1
+          if (!$zlib -or !$png) { Get-ChildItem "$prefix/lib"; throw 'Image library lookup failed' }
+          $imageArgs = @("-DZLIB_LIBRARY=$($zlib.FullName)", "-DZLIB_LIBRARY_RELEASE=$($zlib.FullName)", "-DPNG_LIBRARY=$($png.FullName)", "-DPNG_LIBRARY_RELEASE=$($png.FullName)", "-DPNG_PNG_INCLUDE_DIR=$prefix/include")
+          cmake @imageArgs -S game -B build -A x64 -G 'Visual Studio 17 2022' "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" -DFS_BUILD_BENCHMARKS=OFF -DFS_USE_STATIC_LIBS=ON "-DCMAKE_PREFIX_PATH=$prefix" "-DGTEST_DIR=$PWD/gtest" "-DPICOJSON_DIR=$PWD/pico" "-DSFML_DIR=$sfml" "-DSFML_BIN_DIR=$sfml/../../../bin" "-DwxWidgets_ROOT_DIR=$PWD/wxsdk" "-DwxWidgets_LIB_DIR=$wxLib" -DwxWidgets_CONFIGURATION=mswu -DwxWidgets_USE_REL_AND_DBG=OFF
           cmake --build build --target FloatingSandbox --config Release --parallel 2
           cmake --install build/Sources/FloatingSandbox --config Release --prefix "$PWD/package"
           foreach ($item in 'FloatingSandbox.exe','sfml-audio-2.dll','openal32.dll','Data','Ships/default_ship.shp2') {
