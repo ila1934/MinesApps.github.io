@@ -29,11 +29,16 @@ jobs:
         with:
           path: wxsdk
           key: wx-3.1.4-msvc2022-static-sys-r2
+      - uses: actions/cache/restore@v4
+        id: codecs
+        with:
+          path: C:/vcpkg/installed/x64-windows-static
+          key: multiship-win2022-codecs-v1
       - name: Install libraries
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           $env:VCPKG_DISABLE_METRICS='1'
-          & "$env:VCPKG_INSTALLATION_ROOT/vcpkg.exe" install zlib:x64-windows-static libpng:x64-windows-static libjpeg-turbo:x64-windows-static --classic
+          if ('${{ steps.codecs.outputs.cache-hit }}' -ne 'true') { & "$env:VCPKG_INSTALLATION_ROOT/vcpkg.exe" install zlib:x64-windows-static libpng:x64-windows-static libjpeg-turbo:x64-windows-static --classic }
           git clone --depth 1 --branch v1.3.0 https://github.com/kazuho/picojson pico
           git clone --depth 1 --branch release-1.11.0 https://github.com/google/googletest gtest
           git clone --depth 1 --recurse-submodules --shallow-submodules --branch v3.1.4 https://github.com/wxWidgets/wxWidgets wx
@@ -53,6 +58,11 @@ jobs:
         with:
           path: wxsdk
           key: wx-3.1.4-msvc2022-static-sys-r2
+      - uses: actions/cache/save@v4
+        if: steps.codecs.outputs.cache-hit != 'true'
+        with:
+          path: C:/vcpkg/installed/x64-windows-static
+          key: multiship-win2022-codecs-v1
       - name: Build game with the mod
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
@@ -68,7 +78,7 @@ jobs:
           $png = Get-ChildItem "$prefix/lib" -Filter '*png*.lib' | Select-Object -First 1
           if (!$zlib -or !$png) { Get-ChildItem "$prefix/lib"; throw 'Image library lookup failed' }
           $imageArgs = @("-DZLIB_LIBRARY=$($zlib.FullName.Replace('\','/'))", "-DZLIB_LIBRARY_RELEASE=$($zlib.FullName.Replace('\','/'))", "-DPNG_LIBRARY=$($png.FullName.Replace('\','/'))", "-DPNG_LIBRARY_RELEASE=$($png.FullName.Replace('\','/'))", "-DPNG_PNG_INCLUDE_DIR=$prefix/include")
-          cmake @imageArgs -S game -B build -A x64 -G 'Visual Studio 17 2022' "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" -DFS_BUILD_BENCHMARKS=OFF -DFS_USE_STATIC_LIBS=ON "-DCMAKE_PREFIX_PATH=$prefix" "-DGTEST_DIR:PATH=$PWD/gtest" "-DPICOJSON_DIR:PATH=$PWD/pico" "-DSFML_DIR=$sfml" "-DSFML_BIN_DIR:PATH=$sfml/../../../bin" "-DwxWidgets_ROOT_DIR:PATH=$PWD/wxsdk" "-DwxWidgets_LIB_DIR:PATH=$wxLib" -DwxWidgets_CONFIGURATION=mswu -DwxWidgets_USE_REL_AND_DBG=OFF
+          cmake @imageArgs -S game -B build -A x64 -G 'Visual Studio 17 2022' "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" -DFS_BUILD_BENCHMARKS=OFF -DFS_USE_STATIC_LIBS=ON "-DCMAKE_PREFIX_PATH=$prefix" "-DGTEST_DIR:PATH=$PWD/gtest" "-DPICOJSON_DIR:PATH=$PWD/pico" "-DSFML_DIR=$sfml" "-DSFML_BIN_DIR:PATH=$sfml/../../../bin" "-DwxWidgets_ROOT:PATH=$PWD/wxsdk" "-DwxWidgets_LIB_DIR:PATH=$wxLib" -DwxWidgets_CONFIGURATION=mswu -DwxWidgets_USE_REL_AND_DBG=OFF
           cmake --build build --target FloatingSandbox --config Release --parallel 2
           cmake --install build/Sources/FloatingSandbox --config Release --prefix "$PWD/package"
           foreach ($item in 'FloatingSandbox.exe','sfml-audio-2.dll','openal32.dll','Data','Ships/default_ship.shp2') {
