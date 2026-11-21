@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.15)
+project(ShipContactChecks LANGUAGES CXX)
+add_executable(ShipContactChecks contact_tests.cpp)
+target_compile_features(ShipContactChecks PRIVATE cxx_std_17)
+target_include_directories(ShipContactChecks PRIVATE ../game/Sources)
